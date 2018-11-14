@@ -1,15 +1,20 @@
 package org.zywx.wbpalmstar.plugin.uexbaidunavi;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.widget.Toast;
 
 import com.baidu.navisdk.adapter.BNRouteGuideManager;
@@ -23,6 +28,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.zywx.wbpalmstar.base.BDebug;
+import org.zywx.wbpalmstar.engine.EBrowserActivity;
 import org.zywx.wbpalmstar.engine.EBrowserView;
 import org.zywx.wbpalmstar.engine.universalex.EUExBase;
 import org.zywx.wbpalmstar.plugin.uexbaidunavi.util.Util;
@@ -61,6 +67,8 @@ public class EUExBaiduNavi extends EUExBase {
     private static final String CB_INIT = "uexBaiduNavi.cbInit";// 初始化回调
     private static final String CB_START_ROUTE_PLAN = "uexBaiduNavi.cbStartRoutePlan";// 开始路径规划回调
     private static final String ON_EXIT_NAVI = "uexBaiduNavi.onExitNavi";// 退出导航的监听方法
+
+    private String[] initParams;
 
     // Handler
     private MyHandler ttsHandler = new MyHandler(this);
@@ -127,59 +135,71 @@ public class EUExBaiduNavi extends EUExBase {
 
         BDebug.i("start");
 
-        int callbackId=-1;
-        if (params.length>1){//params[0]为iOS必传参数
-            callbackId= Integer.parseInt(params[1]);
-        }
-        // 获得SD卡下的存放目录
-        mSDCardPath = Environment.getExternalStorageDirectory().toString() + "/widgetone/apps/" + mBrwView.getRootWidget().m_appId + "/" + Constant.APP_FOLDER_NAME;// 获得文件夹路径
-        Util.checkFolderPath(mSDCardPath);
-        BDebug.i("mSDCardPath = " + mSDCardPath);
+        initParams = params;
+        // android6.0以上动态权限申请
+        if (mContext.checkCallingOrSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED){
+            requsetPerssions(Manifest.permission.ACCESS_FINE_LOCATION, "请先申请权限"
+                    + Manifest.permission.ACCESS_FINE_LOCATION, 1);
+        } else if (mContext.checkCallingOrSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED){
+            requsetPerssions(Manifest.permission.RECORD_AUDIO, "请先申请权限"
+                    + Manifest.permission.RECORD_AUDIO, 2);
+        } else {
+            int callbackId = -1;
+            if (params.length > 1) {//params[0]为iOS必传参数
+                callbackId = Integer.parseInt(params[1]);
+            }
+            // 获得SD卡下的存放目录
+            mSDCardPath = Environment.getExternalStorageDirectory().toString() + "/widgetone/apps/" + mBrwView.getRootWidget().m_appId + "/" + Constant.APP_FOLDER_NAME;// 获得文件夹路径
+            Util.checkFolderPath(mSDCardPath);
+            BDebug.i("mSDCardPath = " + mSDCardPath);
 
-        final int finalCallbackId = callbackId;
-        BaiduNaviManager.getInstance().init((Activity) mContext, mSDCardPath, Constant.APP_FOLDER_NAME, new NaviInitListener() {
+            final int finalCallbackId = callbackId;
+            BaiduNaviManager.getInstance().init((Activity) mContext, mSDCardPath, Constant.APP_FOLDER_NAME, new NaviInitListener() {
 
-            @Override
-            public void onAuthResult(int status, String msg) {
-                keyErrMsg = msg;
+                @Override
+                public void onAuthResult(int status, String msg) {
+                    keyErrMsg = msg;
 
-                if (0 == status) {
-                    isKeyCorrect = true;
-                } else {
-                    isKeyCorrect = false;
-                    BDebug.e(msg);
+                    if (0 == status) {
+                        isKeyCorrect = true;
+                    } else {
+                        isKeyCorrect = false;
+                        BDebug.e(msg);
+                    }
                 }
-            }
 
-            /*
-             * 需要注意的是，即使key校验失败，百度导航引擎也可以初始化成功
-             */
-            @Override
-            public void initSuccess() {
+                /*
+                 * 需要注意的是，即使key校验失败，百度导航引擎也可以初始化成功
+                 */
+                @Override
+                public void initSuccess() {
 
-                BDebug.i("百度导航引擎初始化成功");
+                    BDebug.i("百度导航引擎初始化成功");
 
-                // initSetting
-                BNaviSettingManager.setDayNightMode(BNaviSettingManager.DayNightMode.DAY_NIGHT_MODE_DAY);
-                BNaviSettingManager.setShowTotalRoadConditionBar(BNaviSettingManager.PreViewRoadCondition.ROAD_CONDITION_BAR_SHOW_ON);
-                BNaviSettingManager.setVoiceMode(BNaviSettingManager.VoiceMode.Veteran);
-                BNaviSettingManager.setPowerSaveMode(BNaviSettingManager.PowerSaveMode.DISABLE_MODE);
-                BNaviSettingManager.setRealRoadCondition(BNaviSettingManager.RealRoadCondition.NAVI_ITS_ON);
-                cbInit(true,finalCallbackId,null);//直接回调,第二次init不会走onAuthResult
-            }
+                    // initSetting
+                    BNaviSettingManager.setDayNightMode(BNaviSettingManager.DayNightMode.DAY_NIGHT_MODE_DAY);
+                    BNaviSettingManager.setShowTotalRoadConditionBar(BNaviSettingManager.PreViewRoadCondition.ROAD_CONDITION_BAR_SHOW_ON);
+                    BNaviSettingManager.setVoiceMode(BNaviSettingManager.VoiceMode.Veteran);
+                    BNaviSettingManager.setPowerSaveMode(BNaviSettingManager.PowerSaveMode.DISABLE_MODE);
+                    BNaviSettingManager.setRealRoadCondition(BNaviSettingManager.RealRoadCondition.NAVI_ITS_ON);
+                    cbInit(true, finalCallbackId, null);//直接回调,第二次init不会走onAuthResult
+                }
 
-            @Override
-            public void initStart() {
-                BDebug.i("百度导航引擎初始化开始");
-            }
+                @Override
+                public void initStart() {
+                    BDebug.i("百度导航引擎初始化开始");
+                }
 
-            @Override
-            public void initFailed() {
-                BDebug.i("百度导航引擎初始化失败");
-                cbInit(false, finalCallbackId,"百度导航引擎初始化失败");
-            }
+                @Override
+                public void initFailed() {
+                    BDebug.i("百度导航引擎初始化失败");
+                    cbInit(false, finalCallbackId, "百度导航引擎初始化失败");
+                }
 
-        }, null, ttsHandler, null);
+            }, null, ttsHandler, null);
+        }
     }
 
     /**
@@ -454,6 +474,37 @@ public class EUExBaiduNavi extends EUExBase {
             }
         }
 
+    }
+
+    @Override
+    public void onRequestPermissionResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionResult(requestCode, permissions, grantResults);
+        if (requestCode == 1){
+            if (grantResults[0] != PackageManager.PERMISSION_DENIED){
+                init(initParams);
+            } else {
+                // 对于 ActivityCompat.shouldShowRequestPermissionRationale
+                // 1：用户拒绝了该权限，没有勾选"不再提醒"，此方法将返回true。
+                // 2：用户拒绝了该权限，有勾选"不再提醒"，此方法将返回 false。
+                // 3：如果用户同意了权限，此方法返回false
+                // 拒绝了权限且勾选了"不再提醒"
+                if (!ActivityCompat.shouldShowRequestPermissionRationale((EBrowserActivity)mContext, permissions[0])) {
+                    Toast.makeText(mContext, "请先设置权限" + permissions[0], Toast.LENGTH_LONG).show();
+                } else {
+                    requsetPerssions(Manifest.permission.ACCESS_FINE_LOCATION, "请先申请权限" + permissions[0], 1);
+                }
+            }
+        } else if (requestCode == 2){
+            if (grantResults[0] != PackageManager.PERMISSION_DENIED){
+                init(initParams);
+            } else {
+                if (!ActivityCompat.shouldShowRequestPermissionRationale((EBrowserActivity)mContext, permissions[0])) {
+                    Toast.makeText(mContext, "请先设置权限" + permissions[0], Toast.LENGTH_LONG).show();
+                } else {
+                    requsetPerssions(Manifest.permission.RECORD_AUDIO, "请先申请权限" + permissions[0], 1);
+                }
+            }
+        }
     }
 
 }
